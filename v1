@@ -1,0 +1,52 @@
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from pykiwoom.kiwoom import Kiwoom
+import requests
+
+# 구글 스프레드시트 연동 설정
+scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
+         "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name('path/to/credentials.json', scope)
+client = gspread.authorize(creds)
+sheet = client.open("주식정보").sheet1
+
+# 키움증권 API 연동 설정
+kiwoom = Kiwoom()
+kiwoom.CommConnect(block=True)
+
+# 카카오톡 알림 함수
+def send_kakao_message(message):
+    url = 'https://kapi.kakao.com/v2/api/talk/memo/default/send'
+    headers = {
+        'Authorization': 'Bearer ' + 'YOUR_KAKAO_ACCESS_TOKEN'
+    }
+    data = {
+        "template_object": json.dumps({
+            "object_type": "text",
+            "text": message,
+            "link": {
+                "web_url": "http://www.daum.net",
+                "mobile_web_url": "http://m.daum.net"
+            }
+        })
+    }
+    response = requests.post(url, headers=headers, data=data)
+    return response.status_code
+
+# 주식 정보 확인 및 알림
+def check_stock_prices():
+    records = sheet.get_all_records()
+    for record in records:
+        stock_code = record['종목코드']
+        first_buy_price = record['1차매수가']
+        second_buy_price = record['2차매수가']
+        current_price = kiwoom.GetMasterLastPrice(stock_code)
+        
+        if current_price <= first_buy_price:
+            send_kakao_message(f"{record['종목명']} 주식이 1차 매수가 {first_buy_price}에 도달했습니다. 현재가: {current_price}")
+        elif current_price <= second_buy_price:
+            send_kakao_message(f"{record['종목명']} 주식이 2차 매수가 {second_buy_price}에 도달했습니다. 현재가: {current_price}")
+
+# 스크립트 실행
+if __name__ == "__main__":
+    check_stock_prices()
